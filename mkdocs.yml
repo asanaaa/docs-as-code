@@ -22,3 +22,4 @@ nav:
       - Описание проекта: project/overview.md
       - Требования: project/requirements.md
       - Диаграммы: project/diagrams.md
+  - API: api/index.md

@@ -1,0 +1,272 @@
+openapi: 3.0.3
+info:
+  title: Умный коллега API
+  description: >-
+    Условный API ИИ-ассистента, который анализирует состояние веб-интерфейса
+    и помогает пользователю выполнить задачу пошагово. Сервер приведён
+    для примера; реализация API в рамках практикума не требуется.
+  version: 1.0.0
+servers:
+  - url: https://example.com/api/v1
+tags:
+  - name: Подсказки
+paths:
+  /guides:
+    post:
+      tags: [Подсказки]
+      operationId: createGuide
+      summary: Создать пошаговый сценарий
+      description: Анализирует задачу и текущую страницу, затем предлагает первый шаг.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateGuideRequest'
+            example:
+              task: Найти отчёт по продажам за октябрь
+              page:
+                url: https://app.example.com/dashboard
+                title: Главная панель
+                elements:
+                  - id: reports-menu
+                    role: link
+                    label: Отчёты
+      responses:
+        '201':
+          description: Сценарий создан, первая подсказка готова
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Guide'
+              example:
+                id: guide-123
+                task: Найти отчёт по продажам за октябрь
+                status: in_progress
+                currentStep: 1
+                hint:
+                  text: Откройте раздел «Отчёты».
+                  targetElementId: reports-menu
+                  stepNumber: 1
+        '400':
+          description: Задача не указана или данные страницы некорректны
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              example:
+                code: INVALID_REQUEST
+                message: Поле task не должно быть пустым.
+        '503':
+          description: ИИ-модель временно недоступна
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              example:
+                code: MODEL_UNAVAILABLE
+                message: Не удалось сформировать подсказку. Повторите запрос позже.
+  /guides/{guideId}:
+    get:
+      tags: [Подсказки]
+      operationId: getGuide
+      summary: Получить состояние сценария
+      description: Возвращает текущий шаг и последнюю подсказку.
+      parameters:
+        - $ref: '#/components/parameters/GuideId'
+      responses:
+        '200':
+          description: Сценарий найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Guide'
+        '404':
+          description: Сценарий с таким идентификатором не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              example:
+                code: GUIDE_NOT_FOUND
+                message: Сценарий guide-123 не найден.
+  /guides/{guideId}/next:
+    post:
+      tags: [Подсказки]
+      operationId: getNextHint
+      summary: Получить следующую подсказку
+      description: >-
+        После действия пользователя анализирует обновлённую страницу
+        и возвращает следующий шаг сценария.
+      parameters:
+        - $ref: '#/components/parameters/GuideId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NextHintRequest'
+            example:
+              completedStep: 1
+              page:
+                url: https://app.example.com/reports
+                title: Отчёты
+                elements:
+                  - id: sales-report
+                    role: link
+                    label: Продажи
+      responses:
+        '200':
+          description: Состояние сценария обновлено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Guide'
+              example:
+                id: guide-123
+                task: Найти отчёт по продажам за октябрь
+                status: in_progress
+                currentStep: 2
+                hint:
+                  text: Выберите отчёт «Продажи».
+                  targetElementId: sales-report
+                  stepNumber: 2
+        '400':
+          description: Номер выполненного шага или данные страницы некорректны
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Сценарий с таким идентификатором не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '503':
+          description: ИИ-модель временно недоступна
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+components:
+  parameters:
+    GuideId:
+      name: guideId
+      in: path
+      required: true
+      description: Идентификатор пошагового сценария
+      schema:
+        type: string
+      example: guide-123
+  schemas:
+    PageContext:
+      type: object
+      description: Снимок текущего состояния веб-страницы
+      required: [url, elements]
+      properties:
+        url:
+          type: string
+          format: uri
+          description: Адрес открытой страницы
+          example: https://app.example.com/dashboard
+        title:
+          type: string
+          description: Заголовок страницы
+          example: Главная панель
+        elements:
+          type: array
+          description: Видимые элементы, которые могут понадобиться для подсказки
+          items:
+            $ref: '#/components/schemas/PageElement'
+    PageElement:
+      type: object
+      required: [id, role, label]
+      properties:
+        id:
+          type: string
+          description: Идентификатор элемента на странице
+          example: reports-menu
+        role:
+          type: string
+          description: Тип элемента интерфейса
+          example: link
+        label:
+          type: string
+          description: Видимое название элемента
+          example: Отчёты
+    CreateGuideRequest:
+      type: object
+      required: [task, page]
+      properties:
+        task:
+          type: string
+          minLength: 1
+          description: Задача пользователя
+          example: Найти отчёт по продажам за октябрь
+        page:
+          $ref: '#/components/schemas/PageContext'
+    NextHintRequest:
+      type: object
+      required: [completedStep, page]
+      properties:
+        completedStep:
+          type: integer
+          minimum: 1
+          description: Номер шага, который выполнил пользователь
+          example: 1
+        page:
+          $ref: '#/components/schemas/PageContext'
+    Guide:
+      type: object
+      required: [id, task, status, currentStep, hint]
+      properties:
+        id:
+          type: string
+          description: Идентификатор сценария
+          example: guide-123
+        task:
+          type: string
+          description: Задача пользователя
+          example: Найти отчёт по продажам за октябрь
+        status:
+          type: string
+          description: Текущее состояние сценария
+          enum: [in_progress, completed]
+          example: in_progress
+        currentStep:
+          type: integer
+          minimum: 1
+          description: Номер текущего шага
+          example: 1
+        hint:
+          $ref: '#/components/schemas/Hint'
+    Hint:
+      type: object
+      required: [text, stepNumber]
+      properties:
+        text:
+          type: string
+          description: Текст подсказки
+          example: Откройте раздел «Отчёты».
+        targetElementId:
+          type: string
+          description: Идентификатор элемента, на который указывает подсказка
+          example: reports-menu
+        stepNumber:
+          type: integer
+          minimum: 1
+          description: Номер шага
+          example: 1
+    ApiError:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: Машинный код ошибки
+          example: INVALID_REQUEST
+        message:
+          type: string
+          description: Понятное пользователю описание ошибки
+          example: Поле task не должно быть пустым.
